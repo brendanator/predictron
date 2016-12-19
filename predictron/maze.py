@@ -2,6 +2,18 @@ from bitstring import Bits
 import random
 import math
 
+def generate_mazes(batch_size, size, density):
+  mazes = []
+  labels = []
+  for _ in range(batch_size):
+    maze = Maze(size, density=density)
+    connected_diagonals= maze.connected_diagonals()
+    maze = [[[maze[i+j*size]] for j in range(size)] for i in range(size)]
+    mazes.append(maze)
+    labels.append(connected_diagonals)
+
+  return mazes, labels
+
 class Maze(Bits):
   def __new__(cls, height=20, width=None, density=0.3, binary=None, **kwargs):
     if not width:

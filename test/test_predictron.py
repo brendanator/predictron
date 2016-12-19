@@ -2,14 +2,15 @@ import tensorflow as tf
 
 import predictron.predictron as predictron
 
+
 class PredictronTest(tf.test.TestCase):
   def test_preturn(self):
     with self.test_session() as sess:
-      values = tf.constant([10, 8, 5], shape=[1, 3, 1], dtype=tf.float32)
       rewards = tf.constant([0, 1, 2], shape=[1, 3, 1], dtype=tf.float32)
       discounts = tf.constant([1.0, 0.5, 0.2], shape=[1, 3, 1], dtype=tf.float32)
+      values = tf.constant([10, 8, 5], shape=[1, 3, 1], dtype=tf.float32)
 
-      preturn = predictron.preturn(values, rewards, discounts)
+      preturn = predictron.preturn_network(rewards, discounts, values)
 
       p = sess.run(preturn)
 
@@ -20,7 +21,7 @@ class PredictronTest(tf.test.TestCase):
       preturns = tf.constant([1, 2, 3], shape=[1, 3, 1], dtype=tf.float32)
       lambdas = tf.constant([0.5, 0.4, 0.0], shape=[1, 3, 1], dtype=tf.float32)
 
-      lambda_predictron = predictron.lambda_predictron(preturns, lambdas)
+      lambda_predictron = predictron.lambda_preturn_network(preturns, lambdas)
 
       lp = sess.run(lambda_predictron)
 
