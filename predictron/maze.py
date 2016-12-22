@@ -1,5 +1,6 @@
 import random
 
+
 class MazeGenerator():
   def __init__(self, height=20, width=None, density=0.3):
     if not width:
@@ -12,24 +13,24 @@ class MazeGenerator():
     # Create the right number of walls to be shuffled for each new maze
     non_corner_size = height * width - 2
     population_count = int(non_corner_size * density)
-    self.walls = (['1'] * population_count +
-                  ['0'] * (non_corner_size - population_count))
+    empty_squares = non_corner_size - population_count
+    self.walls = ['1'] * population_count + ['0'] * empty_squares
 
     # Starting point is the bottom right corner
-    self.bottom_right_corner = int('0' * (self.len-1) + '1', base=2)
+    self.bottom_right_corner = int('0' * (self.len - 1) + '1', base=2)
 
     # Edges for use in flood search
     self.not_left_edge, self.not_right_edge, \
       self.not_top_edge, self.not_bottom_edge = self._edges()
 
   def _edges(self):
-    full_columns = '1' * (self.width-1)
+    full_columns = '1' * (self.width - 1)
     not_left = int(('0' + full_columns) * self.height, base=2)
     not_right = int((full_columns + '0') * self.height, base=2)
 
     empty_row = '0' * self.width
     full_row = '1' * self.width
-    full_rows = full_row * (self.height-1)
+    full_rows = full_row * (self.height - 1)
     not_top = int(empty_row + full_rows, base=2)
     not_bottom = int(full_rows + empty_row, base=2)
 
@@ -37,12 +38,11 @@ class MazeGenerator():
 
   def to_binary(self, maze):
     binary = bin(maze)[2:]
-    return '0'*(self.len - len(binary)) + binary
+    return '0' * (self.len - len(binary)) + binary
 
   def print_maze(self, maze):
     binary = self.to_binary(maze)
-    rows = [binary[i:i+self.width]
-            for i in range(0, self.len, self.width)]
+    rows = [binary[i:i + self.width] for i in range(0, self.len, self.width)]
     print('\n'.join(rows))
     print()
 
@@ -75,7 +75,7 @@ class MazeGenerator():
   def connected_diagonals(self, maze):
     assert self.height == self.width
     connected = self.to_binary(self.connected_squares(maze))
-    return [int(connected[(self.height+1) * i]) for i in range(self.height)]
+    return [int(connected[(self.height + 1) * i]) for i in range(self.height)]
 
   def generate_batch(self, batch_size):
     mazes = []
@@ -85,7 +85,7 @@ class MazeGenerator():
       connected_diagonals = self.connected_diagonals(maze)
       maze = self.to_binary(maze)
       maze = [[[maze[i + j]] for j in range(self.width)]
-              for i in range(0, self.height*self.width, self.width)]
+              for i in range(0, self.height * self.width, self.width)]
       mazes.append(maze)
       labels.append(connected_diagonals)
 

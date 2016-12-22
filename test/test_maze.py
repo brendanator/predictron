@@ -1,16 +1,17 @@
 import tensorflow as tf
 from predictron.maze import MazeGenerator
 
+
 class MazeTest(tf.test.TestCase):
   def test_random_maze(self):
-    for height in range(4,21):
-      for width in range(4,21):
+    for height in range(4, 21):
+      for width in range(4, 21):
         for density in [0.1, 0.3, 0.7]:
-          filled = int(
-            (height*width - 2) # Corners are never filled
-            * density)
+          filled = int((height * width - 2)  # Corners are never filled
+                       * density)
 
-          generator = MazeGenerator(height=height, width=width, density=density)
+          generator = MazeGenerator(
+              height=height, width=width, density=density)
           maze = generator.generate()
           self.assertEqual(bin(maze).count('1'), filled)
 

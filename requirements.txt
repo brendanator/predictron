@@ -1,3 +1,0 @@
-# Pip requirements
-
-bitstring >= 3.1.5

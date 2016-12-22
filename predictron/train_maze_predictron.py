@@ -3,7 +3,6 @@ import time
 from datetime import datetime
 from . import maze, predictron
 
-
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_integer('maze_size', 20, 'Maze size')
 tf.app.flags.DEFINE_float('maze_density', 0.3, 'Maze density')
@@ -23,12 +22,13 @@ def train():
   with tf.Graph().as_default():
     global_step = tf.contrib.framework.get_or_create_global_step()
 
-    mazes = tf.placeholder(tf.float32, [FLAGS.batch_size, FLAGS.maze_size,
-                                        FLAGS.maze_size, 1])
+    mazes = tf.placeholder(
+        tf.float32, [FLAGS.batch_size, FLAGS.maze_size, FLAGS.maze_size, 1])
     labels = tf.placeholder(tf.float32, [FLAGS.batch_size, FLAGS.maze_size])
-    maze_generator = maze.MazeGenerator(height=FLAGS.maze_size,
-                                        width=FLAGS.maze_size,
-                                        density=FLAGS.maze_density)
+    maze_generator = maze.MazeGenerator(
+        height=FLAGS.maze_size,
+        width=FLAGS.maze_size,
+        density=FLAGS.maze_density)
 
     preturns, lambda_preturns = predictron.predictron(mazes)
 
@@ -40,9 +40,10 @@ def train():
 
     with tf.train.MonitoredTrainingSession(
         checkpoint_dir=FLAGS.train_dir,
-        hooks=[tf.train.StopAtStepHook(last_step=FLAGS.max_steps),
-               tf.train.NanTensorHook(loss),
-               LoggerHook(loss)],
+        hooks=[
+            tf.train.StopAtStepHook(last_step=FLAGS.max_steps),
+            tf.train.NanTensorHook(loss), LoggerHook(loss)
+        ],
         config=tf.ConfigProto(
             log_device_placement=FLAGS.log_device_placement)) as mon_sess:
 
@@ -75,8 +76,8 @@ class LoggerHook(tf.train.SessionRunHook):
 
       format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
                     'sec/batch)')
-      print (format_str % (datetime.now(), self._step, loss_value,
-                            examples_per_sec, sec_per_batch))
+      print(format_str % (datetime.now(), self._step, loss_value,
+                          examples_per_sec, sec_per_batch))
 
 
 def main(_):
