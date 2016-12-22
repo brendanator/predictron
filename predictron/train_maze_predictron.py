@@ -26,6 +26,9 @@ def train():
     mazes = tf.placeholder(tf.float32, [FLAGS.batch_size, FLAGS.maze_size,
                                         FLAGS.maze_size, 1])
     labels = tf.placeholder(tf.float32, [FLAGS.batch_size, FLAGS.maze_size])
+    maze_generator = maze.MazeGenerator(height=FLAGS.maze_size,
+                                        width=FLAGS.maze_size,
+                                        density=FLAGS.maze_density)
 
     preturns, lambda_preturns = predictron.predictron(mazes)
 
@@ -42,11 +45,9 @@ def train():
                LoggerHook(loss)],
         config=tf.ConfigProto(
             log_device_placement=FLAGS.log_device_placement)) as mon_sess:
-      while not mon_sess.should_stop():
-        _mazes, _labels = maze.generate_mazes(batch_size=FLAGS.batch_size,
-                                            size=FLAGS.maze_size,
-                                            density=FLAGS.maze_density)
 
+      while not mon_sess.should_stop():
+        _mazes, _labels = maze_generator.generate_batch(FLAGS.batch_size)
         mon_sess.run(train_op, {mazes: _mazes, labels: _labels})
 
 

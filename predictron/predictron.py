@@ -27,10 +27,15 @@ def predictron(inputs):
 
 def loss(preturns, lambda_preturns, labels):
   with tf.variable_scope('loss'):
-    preturns_loss = tf.reduce_mean(tf.squared_difference(preturns, tf.expand_dims(labels, dim=1)))
-    lambda_preturns_loss = \
-              tf.reduce_mean(tf.squared_difference(lambda_preturns, labels))
-    consistency_loss = tf.reduce_mean(tf.squared_difference(preturns, tf.stop_gradient(tf.expand_dims(lambda_preturns, dim=1))))
+    preturns_loss = tf.reduce_mean(tf.squared_difference(
+      preturns, tf.expand_dims(labels, dim=1)))
+
+    lambda_preturns_loss = tf.reduce_mean(tf.squared_difference(
+      lambda_preturns, labels))
+
+    consistency_loss = tf.reduce_mean(tf.squared_difference(
+      preturns, tf.stop_gradient(tf.expand_dims(lambda_preturns, dim=1))))
+
     return preturns_loss, lambda_preturns_loss, consistency_loss
 
 
