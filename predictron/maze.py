@@ -36,12 +36,12 @@ class MazeGenerator():
 
     return not_left, not_right, not_top, not_bottom
 
-  def to_binary(self, maze):
+  def maze_to_binary(self, maze):
     binary = bin(maze)[2:]
     return '0' * (self.len - len(binary)) + binary
 
   def print_maze(self, maze):
-    binary = self.to_binary(maze)
+    binary = self.maze_to_binary(maze)
     rows = [binary[i:i + self.width] for i in range(0, self.len, self.width)]
     print('\n'.join(rows))
     print()
@@ -74,19 +74,25 @@ class MazeGenerator():
 
   def connected_diagonals(self, maze):
     assert self.height == self.width
-    connected = self.to_binary(self.connected_squares(maze))
+    connected = self.maze_to_binary(self.connected_squares(maze))
     return [int(connected[(self.height + 1) * i]) for i in range(self.height)]
 
-  def generate_batch(self, batch_size):
+  def generate_labelled_batch(self, batch_size):
     mazes = []
     labels = []
     for _ in range(batch_size):
       maze = self.generate()
       connected_diagonals = self.connected_diagonals(maze)
-      maze = self.to_binary(maze)
-      maze = [[[maze[i + j]] for j in range(self.width)]
-              for i in range(0, self.height * self.width, self.width)]
-      mazes.append(maze)
+      mazes.append(self.maze_to_input(maze))
       labels.append(connected_diagonals)
 
     return mazes, labels
+
+  def generate_batch(self, batch_size):
+    return [self.maze_to_input(self.generate()) for _ in range(batch_size)]
+
+  def maze_to_input(self, maze):
+    maze = self.maze_to_binary(maze)
+    maze = [[[int(maze[i + j])] for j in range(self.width)]
+            for i in range(0, self.height * self.width, self.width)]
+    return maze

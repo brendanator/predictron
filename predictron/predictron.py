@@ -23,32 +23,34 @@ def predictron(inputs):
   values = value_network(predicted_states)
   lambdas = lambda_network(predicted_states)
   preturns = preturn_network(rewards, discounts, values)
-  lambda_preturns = lambda_preturn_network(preturns, lambdas)
-  return preturns, lambda_preturns
+  lambda_preturn = lambda_preturn_network(preturns, lambdas)
+  return preturns, lambda_preturn
 
 
-def loss(preturns, lambda_preturns, labels):
+def loss(preturns, lambda_preturn, labels):
   with tf.variable_scope('loss'):
     preturns_loss = tf.reduce_mean(
         tf.squared_difference(preturns, tf.expand_dims(labels, 1)))
 
-    lambda_preturns_loss = tf.reduce_mean(
-        tf.squared_difference(lambda_preturns, labels))
+    lambda_preturn_loss = tf.reduce_mean(
+        tf.squared_difference(lambda_preturn, labels))
 
     consistency_loss = tf.reduce_mean(
         tf.squared_difference(
-            preturns, tf.stop_gradient(tf.expand_dims(lambda_preturns, 1))))
+            preturns, tf.stop_gradient(tf.expand_dims(lambda_preturn, 1))))
 
-    return preturns_loss, lambda_preturns_loss, consistency_loss
+    return preturns_loss, lambda_preturn_loss, consistency_loss
 
 
-def train(total_loss, global_step):
+def train(total_loss, consistency_loss, global_step):
   # Generate moving averages of all losses and associated summaries.
   loss_averages_op = util.add_loss_summaries(total_loss)
 
+  # Optimizer
+  opt = tf.train.AdamOptimizer()
+
   # Compute gradients.
   with tf.control_dependencies([loss_averages_op]):
-    opt = tf.train.AdamOptimizer()
     grads = opt.compute_gradients(total_loss)
 
   # Apply gradients.
@@ -61,7 +63,7 @@ def train(total_loss, global_step):
   # Add histograms for gradients.
   for grad, var in grads:
     if grad is not None:
-      tf.summary.histogram('gradients', grad)
+      tf.summary.histogram('gradient', grad)
 
   # Track the moving averages of all trainable variables.
   variable_averages = tf.train.ExponentialMovingAverage(
@@ -71,7 +73,18 @@ def train(total_loss, global_step):
   with tf.control_dependencies([apply_gradient_op, variables_averages_op]):
     train_op = tf.no_op(name='train')
 
-  return train_op
+  # Semi supervised training
+  semi_supervised_grads = opt.compute_gradients(consistency_loss)
+  semi_supervised_apply_gradient_op = opt.apply_gradients(
+      semi_supervised_grads)
+  for grad, var in semi_supervised_grads:
+    if grad is not None:
+      tf.summary.histogram('semi_supervised_gradient', grad)
+
+  with tf.control_dependencies([semi_supervised_apply_gradient_op]):
+    semi_supervised_train = tf.no_op(name='semi_supervised_train')
+
+  return train_op, semi_supervised_train
 
 
 def state_representation(inputs):
@@ -241,8 +254,8 @@ def lambda_preturn_network(preturns, lambdas):
     with tf.variable_scope('lambda_predictron'):
       accum_lambda = tf.cumprod(lambdas, axis=1, exclusive=True)
       lambda_bar = (1 - lambdas) * accum_lambda  # This should always sum to 1
-      lambda_preturns = tf.reduce_sum(
+      lambda_preturn = tf.reduce_sum(
           lambda_bar * preturns, reduction_indices=1)
 
-      util.activation_summary(lambda_preturns)
-      return lambda_preturns
+      util.activation_summary(lambda_preturn)
+      return lambda_preturn

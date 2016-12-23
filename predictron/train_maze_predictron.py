@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 import time
 from datetime import datetime
 from . import maze, predictron
@@ -11,6 +12,9 @@ tf.app.flags.DEFINE_string('train_dir', '/tmp/maze_train',
 tf.app.flags.DEFINE_integer('max_steps', 1e6, 'Maximum training steps')
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             'Whether to log device placement.')
+tf.app.flags.DEFINE_integer(
+    'consistency_updates', 0,
+    'Number of semi supervised constistency updates to perform')
 
 
 def train():
@@ -25,59 +29,64 @@ def train():
     mazes = tf.placeholder(
         tf.float32, [FLAGS.batch_size, FLAGS.maze_size, FLAGS.maze_size, 1])
     labels = tf.placeholder(tf.float32, [FLAGS.batch_size, FLAGS.maze_size])
-    maze_generator = maze.MazeGenerator(
+
+    generator = maze.MazeGenerator(
         height=FLAGS.maze_size,
         width=FLAGS.maze_size,
         density=FLAGS.maze_density)
 
-    preturns, lambda_preturns = predictron.predictron(mazes)
+    preturns, lambda_preturn = predictron.predictron(mazes)
 
-    preturns_loss, lambda_preturns_loss, consistency_loss = \
-                            predictron.loss(preturns, lambda_preturns, labels)
-    loss = preturns_loss + lambda_preturns_loss + consistency_loss
+    preturns_loss, lambda_preturn_loss, consistency_loss = \
+                            predictron.loss(preturns, lambda_preturn, labels)
+    total_loss = preturns_loss + lambda_preturn_loss + consistency_loss
 
-    train_op = predictron.train(loss, global_step)
+    train_op, semi_supervised_train = predictron.train(
+        total_loss, consistency_loss, global_step)
 
     with tf.train.MonitoredTrainingSession(
         checkpoint_dir=FLAGS.train_dir,
-        hooks=[
-            tf.train.StopAtStepHook(last_step=FLAGS.max_steps),
-            tf.train.NanTensorHook(loss), LoggerHook(loss)
-        ],
+        hooks=[tf.train.StopAtStepHook(last_step=FLAGS.max_steps)],
         config=tf.ConfigProto(
             log_device_placement=FLAGS.log_device_placement)) as mon_sess:
 
+      step = 0
       while not mon_sess.should_stop():
-        _mazes, _labels = maze_generator.generate_batch(FLAGS.batch_size)
-        mon_sess.run(train_op, {mazes: _mazes, labels: _labels})
+        step += 1
+        start_time = time.time()
+
+        # Supervised learning
+        _mazes, _labels = generator.generate_labelled_batch(FLAGS.batch_size)
+        feed_dict = {mazes: _mazes, labels: _labels}
+        loss_value, _ = mon_sess.run([total_loss, train_op], feed_dict)
+        check_nan(loss_value)
+
+        # Semi-supervised learning
+        for _ in range(FLAGS.consistency_updates):
+          _mazes = generator.generate_batch(FLAGS.batch_size)
+          consistency_loss_value, _ = mon_sess.run(
+              [consistency_loss, semi_supervised_train], {mazes: _mazes})
+          check_nan(consistency_loss_value)
+
+        log_step(step, start_time, loss_value)
 
 
-class LoggerHook(tf.train.SessionRunHook):
-  """Logs loss and runtime."""
+def check_nan(loss_value):
+  if np.isnan(loss_value):
+    tf.logging.error('Model diverged with loss = NaN')
+    raise tf.train.NanLossDuringTrainingError
 
-  def __init__(self, loss):
-    self._loss = loss
 
-  def begin(self):
-    self._step = -1
-
-  def before_run(self, run_context):
-    self._step += 1
-    self._start_time = time.time()
-    return tf.train.SessionRunArgs(self._loss)  # Asks for loss value.
-
-  def after_run(self, run_context, run_values):
-    duration = time.time() - self._start_time
-    loss_value = run_values.results
-    if self._step % 10 == 0:
-      num_examples_per_step = FLAGS.batch_size
-      examples_per_sec = num_examples_per_step / duration
-      sec_per_batch = float(duration)
-
-      format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
-                    'sec/batch)')
-      print(format_str % (datetime.now(), self._step, loss_value,
-                          examples_per_sec, sec_per_batch))
+def log_step(step, start_time, loss_value):
+  if step % 10 == 0:
+    duration = time.time() - start_time
+    examples_per_sec = FLAGS.batch_size * (
+        FLAGS.consistency_updates + 1) / duration
+    sec_per_batch = float(duration)
+    format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
+                  'sec/step)')
+    print(format_str % (datetime.now(), step, loss_value, examples_per_sec,
+                        sec_per_batch))
 
 
 def main(_):
