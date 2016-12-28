@@ -17,13 +17,13 @@ tf.app.flags.DEFINE_boolean('shared_core', True,
 tf.app.flags.DEFINE_integer('reward_size', None, 'Size of reward vector')
 
 
-def predictron(inputs):
-  state = state_representation(inputs)
-  states, hidden_states = rollout_states(state)
-  values = value_network(states)
-  rewards = reward_network(hidden_states)
-  discounts = discount_network(hidden_states)
-  lambdas = lambda_network(hidden_states)
+def predictron(inputs, config):
+  state = state_representation(inputs, config)
+  states, hidden_states = rollout_states(state, config)
+  values = value_network(states, config)
+  rewards = reward_network(hidden_states, config)
+  discounts = discount_network(hidden_states, config)
+  lambdas = lambda_network(hidden_states, config)
   preturns = preturn_network(rewards, discounts, values)
   lambda_preturn = lambda_preturn_network(preturns, lambdas)
   return preturns, lambda_preturn
@@ -89,19 +89,19 @@ def train(total_loss, consistency_loss, global_step):
   return train_op, semi_supervised_train
 
 
-def state_representation(inputs):
+def state_representation(inputs, config):
   with tf.variable_scope('state_representation') as scope:
     kernel_1 = tf.get_variable(
-        'weights_1', [3, 3, FLAGS.input_channels, FLAGS.state_kernels])
-    biases_1 = tf.get_variable('biases_1', [FLAGS.state_kernels])
+        'weights_1', [3, 3, config.input_channels, config.state_kernels])
+    biases_1 = tf.get_variable('biases_1', [config.state_kernels])
     conv_1 = tf.nn.conv2d(inputs, kernel_1, [1, 1, 1, 1], padding='SAME')
     bias_1 = tf.nn.bias_add(conv_1, biases_1)
     hidden_1 = tf.nn.relu(bias_1, name=scope.name)
     util.activation_summary(hidden_1)
 
     kernel_2 = tf.get_variable(
-        'weights_2', [3, 3, FLAGS.state_kernels, FLAGS.state_kernels])
-    biases_2 = tf.get_variable('biases_2', [FLAGS.state_kernels])
+        'weights_2', [3, 3, config.state_kernels, config.state_kernels])
+    biases_2 = tf.get_variable('biases_2', [config.state_kernels])
     conv_2 = tf.nn.conv2d(hidden_1, kernel_2, [1, 1, 1, 1], padding='SAME')
     bias_2 = tf.nn.bias_add(conv_2, biases_2)
     state_representation = tf.nn.relu(bias_2, name=scope.name)
@@ -110,19 +110,19 @@ def state_representation(inputs):
     return state_representation
 
 
-def model_network(state):
+def model_network(state, config):
   with tf.variable_scope('model') as scope:
     kernel_1 = tf.get_variable(
-        'weights_1', [3, 3, FLAGS.state_kernels, FLAGS.state_kernels])
-    biases_1 = tf.get_variable('biases_1', [FLAGS.state_kernels])
+        'weights_1', [3, 3, config.state_kernels, config.state_kernels])
+    biases_1 = tf.get_variable('biases_1', [config.state_kernels])
     conv_1 = tf.nn.conv2d(state, kernel_1, [1, 1, 1, 1], padding='SAME')
     bias_1 = tf.nn.bias_add(conv_1, biases_1)
     hidden_layer_1 = tf.nn.relu(bias_1, name=scope.name)
     util.activation_summary(hidden_layer_1)
 
     kernel_2 = tf.get_variable(
-        'weights_2', [3, 3, FLAGS.state_kernels, FLAGS.state_kernels])
-    biases_2 = tf.get_variable('biases_2', [FLAGS.state_kernels])
+        'weights_2', [3, 3, config.state_kernels, config.state_kernels])
+    biases_2 = tf.get_variable('biases_2', [config.state_kernels])
     conv_2 = tf.nn.conv2d(
         hidden_layer_1, kernel_2, [1, 1, 1, 1], padding='SAME')
     bias_2 = tf.nn.bias_add(conv_2, biases_2)
@@ -130,8 +130,8 @@ def model_network(state):
     util.activation_summary(hidden_layer_2)
 
     kernel_3 = tf.get_variable(
-        'weights_3', [3, 3, FLAGS.state_kernels, FLAGS.state_kernels])
-    biases_3 = tf.get_variable('biases_3', [FLAGS.state_kernels])
+        'weights_3', [3, 3, config.state_kernels, config.state_kernels])
+    biases_3 = tf.get_variable('biases_3', [config.state_kernels])
     conv_3 = tf.nn.conv2d(
         hidden_layer_2, kernel_3, [1, 1, 1, 1], padding='SAME')
     bias_3 = tf.nn.bias_add(conv_3, biases_3)
@@ -140,17 +140,17 @@ def model_network(state):
   return hidden_layer_1, next_state
 
 
-def state_size():
-  return FLAGS.input_height * FLAGS.input_width * FLAGS.state_kernels
+def state_size(config):
+  return config.input_height * config.input_width * config.state_kernels
 
 
-def rollout_states(state):
+def rollout_states(state, config):
   hidden_states = []
   states = [state]
 
   with tf.variable_scope('states'):
-    for i in range(1, FLAGS.predictron_depth + 1):
-      if FLAGS.shared_core:
+    for i in range(1, config.predictron_depth + 1):
+      if config.shared_core:
         scope = 'shared-core'
         reuse = i > 1
       else:
@@ -158,115 +158,127 @@ def rollout_states(state):
         reuse = False
 
       with tf.variable_scope(scope, reuse=reuse):
-        hidden_state, state = model_network(state)
+        hidden_state, state = model_network(state, config)
         states.append(state)
         hidden_states.append(hidden_state)
 
     states = tf.reshape(
         tf.pack(states[:-1], 1),
-        [FLAGS.batch_size, FLAGS.predictron_depth, state_size()])
+        [config.batch_size, config.predictron_depth, state_size(config)])
     hidden_states = tf.reshape(
         tf.pack(hidden_states, 1),
-        [FLAGS.batch_size, FLAGS.predictron_depth, state_size()])
+        [config.batch_size, config.predictron_depth, state_size(config)])
 
     util.activation_summary(states)
     return states, hidden_states
 
 
-def output_network(inputs):
-  if FLAGS.shared_core:
-    weights_1 = tf.get_variable('weights_1',
-                                [state_size(), FLAGS.output_hidden_size])
-    biases_1 = tf.get_variable('biases_1', [FLAGS.output_hidden_size])
-    weights_2 = tf.get_variable('weights_2',
-                                [FLAGS.output_hidden_size, FLAGS.reward_size])
-    biases_2 = tf.get_variable('biases_2', [FLAGS.reward_size])
+def output_network(inputs, config):
+  if config.shared_core:
+    weights_1 = tf.get_variable(
+        'weights_1', [state_size(config), config.output_hidden_size])
+    biases_1 = tf.get_variable('biases_1', [config.output_hidden_size])
+    weights_2 = tf.get_variable(
+        'weights_2', [config.output_hidden_size, config.reward_size])
+    biases_2 = tf.get_variable('biases_2', [config.reward_size])
 
     inputs = tf.reshape(
-        inputs, [FLAGS.batch_size * FLAGS.predictron_depth, state_size()])
+        inputs,
+        [config.batch_size * config.predictron_depth, state_size(config)])
     hidden = tf.nn.xw_plus_b(inputs, weights_1, biases_1)
     logits = tf.nn.xw_plus_b(hidden, weights_2, biases_2)
   else:
-    weights_1 = tf.get_variable(
-        'weights_1',
-        [1, FLAGS.predictron_depth, state_size(), FLAGS.output_hidden_size])
+    weights_1 = tf.get_variable('weights_1', [
+        1, config.predictron_depth, state_size(config),
+        config.output_hidden_size
+    ])
     weights_1 = tf.tile(weights_1,
-                        [FLAGS.batch_size, 1, 1, 1])  # Manual broadcasting
+                        [config.batch_size, 1, 1, 1])  # Manual broadcasting
     biases_1 = tf.get_variable(
-        'biases_1', [FLAGS.predictron_depth, 1, FLAGS.output_hidden_size])
+        'biases_1', [config.predictron_depth, 1, config.output_hidden_size])
     weights_2 = tf.get_variable('weights_2', [
-        1, FLAGS.predictron_depth, FLAGS.output_hidden_size, FLAGS.reward_size
+        1, config.predictron_depth, config.output_hidden_size,
+        config.reward_size
     ])
     weights_2 = tf.tile(weights_2,
-                        [FLAGS.batch_size, 1, 1, 1])  # Manual broadcasting
-    biases_2 = tf.get_variable('biases_2',
-                               [FLAGS.predictron_depth, 1, FLAGS.reward_size])
+                        [config.batch_size, 1, 1, 1])  # Manual broadcasting
+    biases_2 = tf.get_variable(
+        'biases_2', [config.predictron_depth, 1, config.reward_size])
 
     inputs = tf.reshape(
-        inputs, [FLAGS.batch_size, FLAGS.predictron_depth, 1, state_size()])
+        inputs,
+        [config.batch_size, config.predictron_depth, 1, state_size(config)])
 
     hidden = tf.batch_matmul(inputs, weights_1) + biases_1
     logits = tf.batch_matmul(hidden, weights_2) + biases_2
 
   return tf.reshape(
-      logits, [FLAGS.batch_size, FLAGS.predictron_depth, FLAGS.reward_size])
+      logits, [config.batch_size, config.predictron_depth, config.reward_size])
 
 
-def value_network(states):
+def value_network(states, config):
   with tf.variable_scope('value') as scope:
-    values = output_network(states)
+    values = output_network(states, config)
     util.activation_summary(values)
     return values
 
 
-def reward_network(hidden_states):
+def reward_network(hidden_states, config):
   with tf.variable_scope('reward') as scope:
-    rewards = output_network(hidden_states)
+    rewards = output_network(hidden_states, config)
 
     # Insert rewards[0] as zero
     rewards = tf.slice(
         rewards,
         begin=[0, 0, 0],
-        size=[FLAGS.batch_size, FLAGS.predictron_depth - 1, FLAGS.reward_size])
+        size=[
+            config.batch_size, config.predictron_depth - 1, config.reward_size
+        ])
     rewards = tf.concat(
         concat_dim=1,
-        values=[tf.zeros([FLAGS.batch_size, 1, FLAGS.reward_size]), rewards])
+        values=[tf.zeros([config.batch_size, 1, config.reward_size]), rewards])
 
     util.activation_summary(rewards)
     return rewards
 
 
-def discount_network(hidden_states):
+def discount_network(hidden_states, config):
   with tf.variable_scope('discount') as scope:
-    logits = output_network(hidden_states)
+    logits = output_network(hidden_states, config)
     discounts = tf.nn.sigmoid(logits)
 
     # Insert discounts[0] as one
     discounts = tf.slice(
         discounts,
         begin=[0, 0, 0],
-        size=[FLAGS.batch_size, FLAGS.predictron_depth - 1, FLAGS.reward_size])
+        size=[
+            config.batch_size, config.predictron_depth - 1, config.reward_size
+        ])
     discounts = tf.concat(
         concat_dim=1,
-        values=[tf.ones([FLAGS.batch_size, 1, FLAGS.reward_size]), discounts])
+        values=[
+            tf.ones([config.batch_size, 1, config.reward_size]), discounts
+        ])
 
     util.activation_summary(discounts)
     return discounts
 
 
-def lambda_network(hidden_states):
+def lambda_network(hidden_states, config):
   with tf.variable_scope('lambda') as scope:
-    logits = output_network(hidden_states)
+    logits = output_network(hidden_states, config)
     lambdas = tf.nn.sigmoid(logits, name=scope.name)
 
     # Set lambdas[-1] to zero
     lambdas = tf.slice(
         lambdas,
         begin=[0, 0, 0],
-        size=[FLAGS.batch_size, FLAGS.predictron_depth - 1, FLAGS.reward_size])
+        size=[
+            config.batch_size, config.predictron_depth - 1, config.reward_size
+        ])
     lambdas = tf.concat(
         concat_dim=1,
-        values=[lambdas, tf.zeros([FLAGS.batch_size, 1, FLAGS.reward_size])])
+        values=[lambdas, tf.zeros([config.batch_size, 1, config.reward_size])])
 
     util.activation_summary(lambdas)
     return lambdas

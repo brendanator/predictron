@@ -1,7 +1,9 @@
 import tensorflow as tf
 import numpy as np
-import time
+
 from datetime import datetime
+import time
+
 from . import maze, predictron
 
 FLAGS = tf.app.flags.FLAGS
@@ -22,6 +24,7 @@ def train():
   FLAGS.input_width = FLAGS.maze_size
   FLAGS.input_channels = 1
   FLAGS.reward_size = FLAGS.maze_size
+  FLAGS.is_training = True
 
   with tf.Graph().as_default():
     global_step = tf.contrib.framework.get_or_create_global_step()
@@ -35,7 +38,7 @@ def train():
         width=FLAGS.maze_size,
         density=FLAGS.maze_density)
 
-    preturns, lambda_preturn = predictron.predictron(mazes)
+    preturns, lambda_preturn = predictron.predictron(mazes, FLAGS)
 
     preturns_loss, lambda_preturn_loss, consistency_loss = \
                             predictron.loss(preturns, lambda_preturn, labels)

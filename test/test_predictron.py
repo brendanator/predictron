@@ -29,23 +29,23 @@ class PredictronTest(tf.test.TestCase):
       self.assertNear(lp, 1.7, 1e-6)
 
   def test_state_to_output_network(self):
-    FLAGS = tf.app.flags.FLAGS
-    FLAGS.batch_size = 16
-    FLAGS.predictron_depth = 8
-    FLAGS.input_height = 10
-    FLAGS.input_width = 5
-    FLAGS.reward_size = 3
+    config = tf.app.flags.FLAGS
+    config.batch_size = 16
+    config.predictron_depth = 8
+    config.input_height = 10
+    config.input_width = 5
+    config.reward_size = 3
 
     for shared_core in [True, False]:
       with tf.variable_scope('shared-%s' % str(shared_core)) as scope:
-        FLAGS.shared_core = shared_core
+        config.shared_core = shared_core
 
         states = tf.zeros([
-            FLAGS.batch_size, FLAGS.predictron_depth, FLAGS.input_height,
-            FLAGS.input_width, FLAGS.state_kernels
+            config.batch_size, config.predictron_depth, config.input_height,
+            config.input_width, config.state_kernels
         ])
 
-        rewards = predictron.reward_network(states)
+        rewards = predictron.reward_network(states, config)
 
         self.assertAllEqual(rewards.get_shape().as_list(), [16, 8, 3])
 
