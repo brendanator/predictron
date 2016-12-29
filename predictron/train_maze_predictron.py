@@ -40,9 +40,8 @@ def train():
 
     preturns, lambda_preturn = predictron.predictron(mazes, FLAGS)
 
-    preturns_loss, lambda_preturn_loss, consistency_loss = \
-                            predictron.loss(preturns, lambda_preturn, labels)
-    total_loss = preturns_loss + lambda_preturn_loss + consistency_loss
+    total_loss, consistency_loss = predictron.loss(preturns, lambda_preturn,
+                                                   labels)
 
     train_op, semi_supervised_train = predictron.train(
         total_loss, consistency_loss, global_step)

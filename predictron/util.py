@@ -1,7 +1,24 @@
 import tensorflow as tf
 
 
-def variable_with_weight_decay(name, shape, stddev, wd):
+def variable_on_cpu(name, shape, initializer):
+  """Helper to create a Variable stored on CPU memory.
+
+  Args:
+    name: name of the variable
+    shape: list of ints
+    initializer: initializer for Variable
+
+  Returns:
+    Variable Tensor
+  """
+  with tf.device('/cpu:0'):
+    var = tf.get_variable(
+        name, shape, initializer=initializer, dtype=tf.float32)
+  return var
+
+
+def variable_with_weight_decay(name, shape, stddev=1e-3, wd=0.01):
   """Helper to create an initialized Variable with weight decay.
 
   Note that the Variable is initialized with a truncated normal distribution.
@@ -17,12 +34,11 @@ def variable_with_weight_decay(name, shape, stddev, wd):
   Returns:
     Variable Tensor
   """
-  with tf.device('/cpu:0'):
-    var = tf.get_variable(
-        name,
-        shape,
-        tf.truncated_normal_initializer(
-            stddev=stddev, dtype=tf.float32))
+  var = variable_on_cpu(
+      name,
+      shape,
+      initializer=tf.truncated_normal_initializer(
+          stddev=stddev, dtype=tf.float32))
   if wd is not None:
     weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
     tf.add_to_collection('losses', weight_decay)

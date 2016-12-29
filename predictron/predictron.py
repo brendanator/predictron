@@ -41,7 +41,11 @@ def loss(preturns, lambda_preturn, labels):
         tf.squared_difference(
             preturns, tf.stop_gradient(tf.expand_dims(lambda_preturn, 1))))
 
-    return preturns_loss, lambda_preturn_loss, consistency_loss
+    l2_loss = tf.get_collection('losses')
+
+    total_loss = preturns_loss + lambda_preturn_loss + consistency_loss
+    consistency_loss += l2_loss
+    return total_loss, consistency_loss
 
 
 def train(total_loss, consistency_loss, global_step):
@@ -91,17 +95,19 @@ def train(total_loss, consistency_loss, global_step):
 
 def state_representation(inputs, config):
   with tf.variable_scope('state_representation') as scope:
-    kernel_1 = tf.get_variable(
+    kernel_1 = util.variable_with_weight_decay(
         'weights_1', [3, 3, config.input_channels, config.state_kernels])
-    biases_1 = tf.get_variable('biases_1', [config.state_kernels])
+    biases_1 = util.variable_on_cpu('biases_1', [config.state_kernels],
+                                    tf.constant_initializer(0.1))
     conv_1 = tf.nn.conv2d(inputs, kernel_1, [1, 1, 1, 1], padding='SAME')
     bias_1 = tf.nn.bias_add(conv_1, biases_1)
     hidden_1 = tf.nn.relu(bias_1, name=scope.name)
     util.activation_summary(hidden_1)
 
-    kernel_2 = tf.get_variable(
-        'weights_2', [3, 3, config.state_kernels, config.state_kernels])
-    biases_2 = tf.get_variable('biases_2', [config.state_kernels])
+    kernel_2 = util.variable_with_weight_decay(
+        'weights', [3, 3, config.state_kernels, config.state_kernels])
+    biases_2 = util.variable_on_cpu('biases', [config.state_kernels],
+                                    tf.constant_initializer(0.1))
     conv_2 = tf.nn.conv2d(hidden_1, kernel_2, [1, 1, 1, 1], padding='SAME')
     bias_2 = tf.nn.bias_add(conv_2, biases_2)
     state_representation = tf.nn.relu(bias_2, name=scope.name)
@@ -175,12 +181,14 @@ def rollout_states(state, config):
 
 def output_network(inputs, config):
   if config.shared_core:
-    weights_1 = tf.get_variable(
+    weights_1 = util.variable_with_weight_decay(
         'weights_1', [state_size(config), config.output_hidden_size])
-    biases_1 = tf.get_variable('biases_1', [config.output_hidden_size])
-    weights_2 = tf.get_variable(
+    biases_1 = util.variable_on_cpu('biases_1', [config.output_hidden_size],
+                                    tf.constant_initializer(0.0))
+    weights_2 = util.variable_with_weight_decay(
         'weights_2', [config.output_hidden_size, config.reward_size])
-    biases_2 = tf.get_variable('biases_2', [config.reward_size])
+    biases_2 = util.variable_on_cpu('biases_2', [config.reward_size],
+                                    tf.constant_initializer(0.0))
 
     inputs = tf.reshape(
         inputs,
@@ -188,22 +196,24 @@ def output_network(inputs, config):
     hidden = tf.nn.xw_plus_b(inputs, weights_1, biases_1)
     logits = tf.nn.xw_plus_b(hidden, weights_2, biases_2)
   else:
-    weights_1 = tf.get_variable('weights_1', [
+    weights_1 = util.variable_with_weight_decay('weights_1', [
         1, config.predictron_depth, state_size(config),
         config.output_hidden_size
     ])
     weights_1 = tf.tile(weights_1,
                         [config.batch_size, 1, 1, 1])  # Manual broadcasting
-    biases_1 = tf.get_variable(
-        'biases_1', [config.predictron_depth, 1, config.output_hidden_size])
-    weights_2 = tf.get_variable('weights_2', [
+    biases_1 = util.variable_on_cpu(
+        'biases_1', [config.predictron_depth, 1, config.output_hidden_size],
+        tf.constant_initializer(0.0))
+    weights_2 = util.variable_with_weight_decay('weights_2', [
         1, config.predictron_depth, config.output_hidden_size,
         config.reward_size
     ])
     weights_2 = tf.tile(weights_2,
                         [config.batch_size, 1, 1, 1])  # Manual broadcasting
-    biases_2 = tf.get_variable(
-        'biases_2', [config.predictron_depth, 1, config.reward_size])
+    biases_2 = util.variable_on_cpu(
+        'biases_2', [config.predictron_depth, 1, config.reward_size],
+        tf.constant_initializer(0.0))
 
     inputs = tf.reshape(
         inputs,
