@@ -1,4 +1,5 @@
 import random
+from .util import Colour
 
 
 class MazeGenerator():
@@ -40,11 +41,15 @@ class MazeGenerator():
     binary = bin(maze)[2:]
     return '0' * (self.len - len(binary)) + binary
 
-  def print_maze(self, maze):
-    binary = self.maze_to_binary(maze)
-    rows = [binary[i:i + self.width] for i in range(0, self.len, self.width)]
+  def print_maze(self, maze, labels):
+    rows = []
+    for i in range(self.height):
+      row = maze[i]
+      row = ''.join([str(row[i][0]) for i in range(self.width)])
+      row = row[:i] + Colour.highlight(row[i], labels[i]) + row[i + 1:]
+      rows.append(row)
+
     print('\n'.join(rows))
-    print()
 
   def generate(self):
     random.shuffle(self.walls)
