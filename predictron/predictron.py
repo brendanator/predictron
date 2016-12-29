@@ -76,7 +76,12 @@ def train(total_loss, consistency_loss, global_step):
       decay=0.9999, num_updates=global_step)
   variables_averages_op = variable_averages.apply(tf.trainable_variables())
 
-  with tf.control_dependencies([apply_gradient_op, variables_averages_op]):
+  # Get batch_norm updates to run during training
+  update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+
+  # Training
+  with tf.control_dependencies([apply_gradient_op, variables_averages_op] +
+                               update_ops):
     train_op = tf.no_op(name='train')
 
   # Semi supervised training
@@ -87,7 +92,8 @@ def train(total_loss, consistency_loss, global_step):
     if grad is not None:
       tf.summary.histogram('semi_supervised_gradient', grad)
 
-  with tf.control_dependencies([semi_supervised_apply_gradient_op]):
+  with tf.control_dependencies([semi_supervised_apply_gradient_op] +
+                               update_ops):
     semi_supervised_train = tf.no_op(name='semi_supervised_train')
 
   return train_op, semi_supervised_train
@@ -95,53 +101,85 @@ def train(total_loss, consistency_loss, global_step):
 
 def state_representation(inputs, config):
   with tf.variable_scope('state_representation') as scope:
-    kernel_1 = util.variable_with_weight_decay(
-        'weights_1', [3, 3, config.input_channels, config.state_kernels])
-    biases_1 = util.variable_on_cpu('biases_1', [config.state_kernels],
-                                    tf.constant_initializer(0.1))
-    conv_1 = tf.nn.conv2d(inputs, kernel_1, [1, 1, 1, 1], padding='SAME')
-    bias_1 = tf.nn.bias_add(conv_1, biases_1)
-    hidden_1 = tf.nn.relu(bias_1, name=scope.name)
-    util.activation_summary(hidden_1)
+    with tf.variable_scope('layer-1') as scope:
+      kernel_1 = util.variable_with_weight_decay(
+          'weights', [3, 3, config.input_channels, config.state_kernels])
+      biases_1 = util.variable_on_cpu('biases', [config.state_kernels],
+                                      tf.constant_initializer(0.1))
+      conv_1 = tf.nn.conv2d(inputs, kernel_1, [1, 1, 1, 1], padding='SAME')
+      bias_1 = tf.nn.bias_add(conv_1, biases_1)
+      hidden_1 = tf.nn.relu(bias_1, name=scope.name)
+      util.activation_summary(hidden_1)
 
-    kernel_2 = util.variable_with_weight_decay(
-        'weights', [3, 3, config.state_kernels, config.state_kernels])
-    biases_2 = util.variable_on_cpu('biases', [config.state_kernels],
-                                    tf.constant_initializer(0.1))
-    conv_2 = tf.nn.conv2d(hidden_1, kernel_2, [1, 1, 1, 1], padding='SAME')
-    bias_2 = tf.nn.bias_add(conv_2, biases_2)
-    state_representation = tf.nn.relu(bias_2, name=scope.name)
-    util.activation_summary(state_representation)
+    with tf.variable_scope('layer-2') as scope:
+      kernel_2 = util.variable_with_weight_decay(
+          'weights', [3, 3, config.state_kernels, config.state_kernels])
+      biases_2 = util.variable_on_cpu('biases', [config.state_kernels],
+                                      tf.constant_initializer(0.1))
+      conv_2 = tf.nn.conv2d(hidden_1, kernel_2, [1, 1, 1, 1], padding='SAME')
+      bias_2 = tf.nn.bias_add(conv_2, biases_2)
+      state_representation = tf.nn.relu(bias_2, name=scope.name)
+      util.activation_summary(state_representation)
 
     return state_representation
 
 
-def model_network(state, config):
-  with tf.variable_scope('model') as scope:
-    kernel_1 = tf.get_variable(
-        'weights_1', [3, 3, config.state_kernels, config.state_kernels])
-    biases_1 = tf.get_variable('biases_1', [config.state_kernels])
-    conv_1 = tf.nn.conv2d(state, kernel_1, [1, 1, 1, 1], padding='SAME')
-    bias_1 = tf.nn.bias_add(conv_1, biases_1)
-    hidden_layer_1 = tf.nn.relu(bias_1, name=scope.name)
-    util.activation_summary(hidden_layer_1)
+def model_network(state, config, reuse):
+  with tf.variable_scope('model', reuse=reuse):
+    with tf.variable_scope('layer-1', reuse=reuse) as scope:
+      kernel_1 = util.variable_with_weight_decay(
+          'weights', [3, 3, config.state_kernels, config.state_kernels])
+      biases_1 = util.variable_on_cpu('biases', [config.state_kernels],
+                                      tf.constant_initializer(0.1))
+      conv_1 = tf.nn.conv2d(state, kernel_1, [1, 1, 1, 1], padding='SAME')
+      bias_1 = tf.nn.bias_add(conv_1, biases_1)
+      normalized_1 = tf.contrib.layers.batch_norm(
+          bias_1,
+          decay=0.99,
+          center=False,
+          scale=False,
+          is_training=config.is_training,
+          scope=scope,
+          reuse=reuse)
+      hidden_layer_1 = tf.nn.relu(normalized_1, name=scope.name)
+      util.activation_summary(hidden_layer_1)
 
-    kernel_2 = tf.get_variable(
-        'weights_2', [3, 3, config.state_kernels, config.state_kernels])
-    biases_2 = tf.get_variable('biases_2', [config.state_kernels])
-    conv_2 = tf.nn.conv2d(
-        hidden_layer_1, kernel_2, [1, 1, 1, 1], padding='SAME')
-    bias_2 = tf.nn.bias_add(conv_2, biases_2)
-    hidden_layer_2 = tf.nn.relu(bias_2, name=scope.name)
-    util.activation_summary(hidden_layer_2)
+    with tf.variable_scope('layer-2', reuse=reuse) as scope:
+      kernel_2 = util.variable_with_weight_decay(
+          'weights', [3, 3, config.state_kernels, config.state_kernels])
+      biases_2 = util.variable_on_cpu('biases', [config.state_kernels],
+                                      tf.constant_initializer(0.1))
+      conv_2 = tf.nn.conv2d(
+          hidden_layer_1, kernel_2, [1, 1, 1, 1], padding='SAME')
+      bias_2 = tf.nn.bias_add(conv_2, biases_2)
+      normalized_2 = tf.contrib.layers.batch_norm(
+          bias_2,
+          decay=0.99,
+          center=False,
+          scale=False,
+          is_training=config.is_training,
+          scope=scope,
+          reuse=reuse)
+      hidden_layer_2 = tf.nn.relu(normalized_2, name=scope.name)
+      util.activation_summary(hidden_layer_2)
 
-    kernel_3 = tf.get_variable(
-        'weights_3', [3, 3, config.state_kernels, config.state_kernels])
-    biases_3 = tf.get_variable('biases_3', [config.state_kernels])
-    conv_3 = tf.nn.conv2d(
-        hidden_layer_2, kernel_3, [1, 1, 1, 1], padding='SAME')
-    bias_3 = tf.nn.bias_add(conv_3, biases_3)
-    next_state = tf.nn.relu(bias_3, name=scope.name)
+    with tf.variable_scope('layer-3', reuse=reuse) as scope:
+      kernel_3 = util.variable_with_weight_decay(
+          'weights', [3, 3, config.state_kernels, config.state_kernels])
+      biases_3 = util.variable_on_cpu('biases', [config.state_kernels],
+                                      tf.constant_initializer(0.1))
+      conv_3 = tf.nn.conv2d(
+          hidden_layer_2, kernel_3, [1, 1, 1, 1], padding='SAME')
+      bias_3 = tf.nn.bias_add(conv_3, biases_3)
+      normalized_3 = tf.contrib.layers.batch_norm(
+          bias_3,
+          decay=0.99,
+          center=False,
+          scale=False,
+          is_training=config.is_training,
+          scope=scope,
+          reuse=reuse)
+      next_state = tf.nn.relu(normalized_3, name=scope.name)
 
   return hidden_layer_1, next_state
 
@@ -160,11 +198,11 @@ def rollout_states(state, config):
         scope = 'shared-core'
         reuse = i > 1
       else:
-        scope = 'layer-%d' % i
+        scope = 'core-%d' % i
         reuse = False
 
       with tf.variable_scope(scope, reuse=reuse):
-        hidden_state, state = model_network(state, config)
+        hidden_state, state = model_network(state, config, reuse)
         states.append(state)
         hidden_states.append(hidden_state)
 
