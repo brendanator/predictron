@@ -58,14 +58,14 @@ def train():
         start_time = time.time()
 
         # Supervised learning
-        _mazes, _labels = generator.generate_labelled_batch(FLAGS.batch_size)
+        _mazes, _labels = generator.generate_labelled_mazes(FLAGS.batch_size)
         feed_dict = {mazes: _mazes, labels: _labels}
         loss_value, _ = mon_sess.run([total_loss, train_op], feed_dict)
         check_nan(loss_value)
 
         # Semi-supervised learning
         for _ in range(FLAGS.consistency_updates):
-          _mazes = generator.generate_batch(FLAGS.batch_size)
+          _mazes = generator.generate_mazes(FLAGS.batch_size)
           consistency_loss_value, _ = mon_sess.run(
               [consistency_loss, semi_supervised_train], {mazes: _mazes})
           check_nan(consistency_loss_value)

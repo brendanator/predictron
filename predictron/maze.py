@@ -46,6 +46,7 @@ class MazeGenerator():
     for i in range(self.height):
       row = maze[i]
       row = ''.join([str(row[i][0]) for i in range(self.width)])
+      row = row.replace('0', '.').replace('1', '#')
       row = row[:i] + Colour.highlight(row[i], labels[i]) + row[i + 1:]
       rows.append(row)
 
@@ -82,7 +83,7 @@ class MazeGenerator():
     connected = self.maze_to_binary(self.connected_squares(maze))
     return [int(connected[(self.height + 1) * i]) for i in range(self.height)]
 
-  def generate_labelled_batch(self, batch_size):
+  def generate_labelled_mazes(self, batch_size):
     mazes = []
     labels = []
     for _ in range(batch_size):
@@ -93,7 +94,7 @@ class MazeGenerator():
 
     return mazes, labels
 
-  def generate_batch(self, batch_size):
+  def generate_mazes(self, batch_size):
     return [self.maze_to_input(self.generate()) for _ in range(batch_size)]
 
   def maze_to_input(self, maze):

@@ -181,7 +181,7 @@ def model_network(state, config, reuse):
           reuse=reuse)
       next_state = tf.nn.relu(normalized_3, name=scope.name)
 
-  return hidden_layer_1, next_state
+    return hidden_layer_1, next_state
 
 
 def state_size(config):

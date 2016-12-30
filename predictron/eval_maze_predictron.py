@@ -31,7 +31,7 @@ def eval_once(saver, mazes, labels, generator, diagonal_predictions,
       # Restores from checkpoint
       saver.restore(sess, ckpt.model_checkpoint_path)
       # Assuming model_checkpoint_path looks something like:
-      #   /my-favorite-path/cifar10_train/model.ckpt-0,
+      #   /my-favorite-path/maze_train/model.ckpt-0,
       # extract global_step from it.
       global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]
     else:
@@ -43,7 +43,7 @@ def eval_once(saver, mazes, labels, generator, diagonal_predictions,
     total_sample_count = num_iter * FLAGS.batch_size
     step = 0
     while step < num_iter:
-      _mazes, _labels = generator.generate_labelled_batch(FLAGS.batch_size)
+      _mazes, _labels = generator.generate_labelled_mazes(FLAGS.batch_size)
       feed_dict = {mazes: _mazes, labels: _labels}
       predictions, correct = sess.run(
           [diagonal_predictions, correct_predictions], feed_dict)

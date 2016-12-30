@@ -61,7 +61,7 @@ def activation_summary(x):
 
 
 def add_loss_summaries(total_loss):
-  """Add summaries for losses in CIFAR-10 model.
+  """Add summaries for losses in model.
 
   Generates moving average for all losses and associated summaries for
   visualizing the performance of the network.
